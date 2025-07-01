@@ -76,20 +76,20 @@ async def example_gemini_usage():
     """Пример работы с Gemini AI"""
     print("🧠 Пример работы с Gemini AI")
     print("-" * 30)
-    
+
     # Проверяем наличие API ключа
     if not os.getenv('GEMINI_API_KEY'):
         print("❌ GEMINI_API_KEY не найден в переменных окружения")
         print("💡 Добавьте ключ в файл .env для тестирования")
         return
-    
+
     try:
         from gemini_client import GeminiClient
-        
+
         # Создаем клиент
         gemini = GeminiClient()
-        print("✅ Gemini клиент инициализирован")
-        
+        print("✅ Gemini клиент инициализирован (Gemini 2.5 Flash)")
+
         # Тестовые посты для анализа
         test_posts = [
             {
@@ -105,33 +105,105 @@ async def example_gemini_usage():
                 'date': '2024-01-03'
             }
         ]
-        
+
         print("🔍 Анализирую стиль постов...")
         style_analysis = gemini.analyze_channel_style(test_posts)
-        
+
         if style_analysis:
             print("✅ Анализ стиля завершен:")
             print(f"📝 Результат: {style_analysis[:200]}...")
-            
-            print("\n🎯 Генерирую пост по теме...")
-            generated_post = gemini.generate_post(
+
+            print("\n🎯 Генерирую обычный пост по теме...")
+            generated_post = await gemini.generate_post(
                 style_analysis=style_analysis,
                 topic="искусственный интеллект",
                 post_type="topic"
             )
-            
+
             if generated_post:
-                print("✅ Пост сгенерирован:")
-                print(f"📄 {generated_post}")
+                print("✅ Обычный пост сгенерирован:")
+                print(f"📄 {generated_post[:200]}...")
             else:
-                print("❌ Ошибка генерации поста")
+                print("❌ Ошибка генерации обычного поста")
+
+            print("\n📰 Генерирую пост с новостями...")
+            news_post = await gemini.generate_news_based_post(
+                style_analysis=style_analysis,
+                topic="технологии"
+            )
+
+            if news_post:
+                print("✅ Пост с новостями сгенерирован:")
+                print(f"📄 {news_post[:200]}...")
+            else:
+                print("❌ Ошибка генерации поста с новостями")
+
+            print("\n📊 Создаю сводку новостей...")
+            news_summary = await gemini.summarize_news("искусственный интеллект", 3)
+
+            if news_summary:
+                print("✅ Сводка новостей создана:")
+                print(f"📄 {news_summary[:200]}...")
+            else:
+                print("❌ Ошибка создания сводки новостей")
         else:
             print("❌ Ошибка анализа стиля")
-            
+
     except Exception as e:
         print(f"❌ Ошибка при работе с Gemini: {e}")
-    
+
     print("✅ Пример работы с Gemini AI завершен\n")
+
+async def example_news_search():
+    """Пример работы с поиском новостей"""
+    print("📰 Пример работы с поиском новостей")
+    print("-" * 30)
+
+    try:
+        from news_searcher import NewsSearcher
+
+        async with NewsSearcher() as searcher:
+            print("✅ NewsSearcher инициализирован")
+
+            # Поиск новостей по теме
+            print("🔍 Ищу новости по теме 'искусственный интеллект'...")
+            articles = await searcher.search_news_by_topic("искусственный интеллект", max_results=3)
+
+            if articles:
+                print(f"✅ Найдено {len(articles)} статей:")
+                for i, article in enumerate(articles, 1):
+                    print(f"  {i}. {article.get('title', 'Без заголовка')}")
+                    print(f"     Источник: {article.get('source', 'Неизвестно')}")
+                    if article.get('published'):
+                        print(f"     Дата: {article['published']}")
+                    print()
+            else:
+                print("❌ Новости не найдены")
+
+            # Получение последних новостей
+            print("📊 Получаю последние новости...")
+            latest_news = await searcher.get_latest_news(max_results=3)
+
+            if latest_news:
+                print(f"✅ Получено {len(latest_news)} последних новостей:")
+                for i, article in enumerate(latest_news, 1):
+                    print(f"  {i}. {article.get('title', 'Без заголовка')}")
+                    print(f"     Источник: {article.get('source', 'Неизвестно')}")
+                    print()
+            else:
+                print("❌ Последние новости не получены")
+
+            # Форматирование новостей
+            if articles:
+                print("📝 Форматирую новости для отправки...")
+                formatted_summary = searcher.format_news_summary(articles, max_articles=3)
+                print("✅ Отформатированная сводка:")
+                print(formatted_summary[:300] + "...")
+
+    except Exception as e:
+        print(f"❌ Ошибка при работе с поиском новостей: {e}")
+
+    print("✅ Пример работы с поиском новостей завершен\n")
 
 async def example_post_generator():
     """Пример работы с генератором постов"""
@@ -268,17 +340,20 @@ async def example_full_workflow():
 
 async def main():
     """Главная функция с примерами"""
-    print("🤖 PostAI Bot - Примеры использования")
-    print("=" * 50)
-    
+    print("🤖 PostAI Bot - Примеры использования (обновленная версия)")
+    print("=" * 60)
+
     # Запускаем примеры
     await example_database_usage()
+    await example_news_search()
     await example_gemini_usage()
     await example_post_generator()
     await example_full_workflow()
-    
+
     print("🎉 Все примеры завершены!")
     print("💡 Для полного тестирования добавьте GEMINI_API_KEY в .env файл")
+    print("📰 Новые функции: поиск новостей, генерация с новостями, сводки новостей")
+    print("🧠 Обновлено: Gemini 2.5 Flash, новый SDK")
 
 if __name__ == "__main__":
     asyncio.run(main())

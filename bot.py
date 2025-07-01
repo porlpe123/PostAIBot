@@ -13,7 +13,7 @@ from config import (
 )
 
 # Состояния для ConversationHandler
-WAITING_CHANNEL_ID, WAITING_TOPIC, WAITING_FREE_TOPIC, WAITING_FEEDBACK = range(4)
+WAITING_CHANNEL_ID, WAITING_TOPIC, WAITING_FREE_TOPIC, WAITING_FEEDBACK, WAITING_NEWS_TOPIC, WAITING_NEWS_SUMMARY_TOPIC = range(6)
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,26 @@ class PostAIBot:
             fallbacks=[CommandHandler("cancel", self.cancel_operation)]
         )
         self.application.add_handler(free_topic_conv)
+
+        # ConversationHandler для генерации с новостями
+        news_conv = ConversationHandler(
+            entry_points=[CallbackQueryHandler(self.news_generation_start, pattern="^generate_news_")],
+            states={
+                WAITING_NEWS_TOPIC: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.generate_news_post)]
+            },
+            fallbacks=[CommandHandler("cancel", self.cancel_operation)]
+        )
+        self.application.add_handler(news_conv)
+
+        # ConversationHandler для сводки новостей
+        news_summary_conv = ConversationHandler(
+            entry_points=[MessageHandler(filters.Regex("^📊 Сводка новостей$"), self.news_summary_start)],
+            states={
+                WAITING_NEWS_SUMMARY_TOPIC: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.generate_news_summary)]
+            },
+            fallbacks=[CommandHandler("cancel", self.cancel_operation)]
+        )
+        self.application.add_handler(news_summary_conv)
         
         # Callback handlers
         self.application.add_handler(CallbackQueryHandler(self.handle_callback))
@@ -185,7 +205,7 @@ class PostAIBot:
                 reply_markup=keyboard
             )
         
-        elif text in ["🎯 По теме", "🎲 Случайный пост", "📝 Свободная тема"]:
+        elif text in ["🎯 По теме", "🎲 Случайный пост", "📝 Свободная тема", "📰 С новостями", "📊 Сводка новостей"]:
             await self.handle_generation_type(update, context, text)
     
     async def show_channels_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -307,6 +327,16 @@ class PostAIBot:
     async def handle_generation_type(self, update: Update, context: ContextTypes.DEFAULT_TYPE, generation_type: str):
         """Обработка типа генерации"""
         user_id = update.effective_user.id
+
+        # Специальная обработка для сводки новостей (не требует канала)
+        if generation_type == "📊 Сводка новостей":
+            await update.message.reply_text(
+                "📊 Введите тему для поиска новостей:\n\n"
+                "Например: 'искусственный интеллект', 'криптовалюты', 'технологии'"
+            )
+            context.user_data['generation_type'] = 'news_summary'
+            return WAITING_NEWS_SUMMARY_TOPIC
+
         channels = self.db.get_user_channels(user_id)
 
         if not channels:
@@ -326,6 +356,8 @@ class PostAIBot:
                     callback_data = f"generate_random_{channel['channel_id']}"
                 elif generation_type == "📝 Свободная тема":
                     callback_data = f"generate_free_{channel['channel_id']}"
+                elif generation_type == "📰 С новостями":
+                    callback_data = f"generate_news_{channel['channel_id']}"
 
                 keyboard.append([
                     InlineKeyboardButton(
@@ -346,7 +378,8 @@ class PostAIBot:
         type_text = {
             "🎯 По теме": "Выберите канал для генерации поста по теме:",
             "🎲 Случайный пост": "Выберите канал для генерации случайного поста:",
-            "📝 Свободная тема": "Выберите канал для генерации поста на свободную тему:"
+            "📝 Свободная тема": "Выберите канал для генерации поста на свободную тему:",
+            "📰 С новостями": "Выберите канал для генерации поста с актуальными новостями:"
         }
 
         await update.message.reply_text(
@@ -386,6 +419,15 @@ class PostAIBot:
                 "Будьте максимально подробными в описании желаемого контента."
             )
             return WAITING_FREE_TOPIC
+
+        elif data.startswith("generate_news_"):
+            channel_id = int(data.split("_")[2])
+            context.user_data['selected_channel'] = channel_id
+            await query.edit_message_text(
+                "📰 Введите тему для поиска актуальных новостей:\n\n"
+                "Например: 'технологии', 'экономика', 'наука', 'спорт'"
+            )
+            return WAITING_NEWS_TOPIC
 
     async def add_channel_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Начало процесса добавления канала"""
@@ -488,7 +530,7 @@ class PostAIBot:
         )
 
         # Генерируем пост
-        result = self.post_generator.generate_post_by_topic(channel_id, topic)
+        result = await self.post_generator.generate_post_by_topic(channel_id, topic)
 
         await generating_msg.delete()
 
@@ -579,7 +621,7 @@ class PostAIBot:
             "Пожалуйста, подождите."
         )
 
-        result = self.post_generator.generate_random_post(channel_id)
+        result = await self.post_generator.generate_random_post(channel_id)
 
         if result['success']:
             post_text = f"""
@@ -657,3 +699,103 @@ class PostAIBot:
         await self.application.updater.stop()
         await self.application.stop()
         await self.application.shutdown()
+
+    async def news_generation_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Начало генерации с новостями"""
+        # Логика уже в handle_callback
+        pass
+
+    async def generate_news_post(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Генерация поста с актуальными новостями"""
+        topic = update.message.text.strip()
+        channel_id = context.user_data.get('selected_channel')
+
+        if not channel_id:
+            await update.message.reply_text("❌ Ошибка: канал не выбран.")
+            return ConversationHandler.END
+
+        generating_msg = await update.message.reply_text(
+            "📰 Ищу актуальные новости и генерирую пост...\n"
+            "Это может занять немного больше времени."
+        )
+
+        result = await self.post_generator.generate_news_based_post(channel_id, topic)
+
+        await generating_msg.delete()
+
+        if result['success']:
+            post_text = f"""
+📰 **Пост с актуальными новостями:**
+
+{result['post']}
+
+---
+🎯 Тема: {result['topic']}
+📊 Тип: На основе новостей
+"""
+            keyboard = [
+                [InlineKeyboardButton("🔄 Обновить новости", callback_data=f"generate_news_{channel_id}")],
+                [InlineKeyboardButton("📝 Улучшить пост", callback_data=f"improve_post_{channel_id}")],
+                [InlineKeyboardButton("📋 Копировать", callback_data="copy_post")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await update.message.reply_text(
+                post_text,
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+        else:
+            await update.message.reply_text(
+                f"❌ Ошибка при генерации поста с новостями:\n{result['error']}"
+            )
+
+        return ConversationHandler.END
+
+    async def news_summary_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Начало создания сводки новостей"""
+        await update.message.reply_text(
+            "📊 Введите тему для поиска новостей:\n\n"
+            "Например: 'искусственный интеллект', 'криптовалюты', 'технологии'"
+        )
+        return WAITING_NEWS_SUMMARY_TOPIC
+
+    async def generate_news_summary(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Генерация сводки новостей"""
+        topic = update.message.text.strip()
+
+        generating_msg = await update.message.reply_text(
+            "📊 Ищу новости и создаю сводку...\n"
+            "Пожалуйста, подождите."
+        )
+
+        result = await self.post_generator.get_news_summary(topic)
+
+        await generating_msg.delete()
+
+        if result['success']:
+            summary_text = f"""
+📊 **Сводка новостей:**
+
+{result['summary']}
+
+---
+🎯 Тема: {result['topic']}
+"""
+            keyboard = [
+                [InlineKeyboardButton("🔄 Обновить сводку", callback_data=f"news_summary_{topic}")],
+                [InlineKeyboardButton("📋 Копировать", callback_data="copy_post")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await update.message.reply_text(
+                summary_text,
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+        else:
+            await update.message.reply_text(
+                f"❌ Ошибка при создании сводки новостей:\n{result['error']}"
+            )
+
+        return ConversationHandler.END

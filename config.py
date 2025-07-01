@@ -15,7 +15,22 @@ DATABASE_PATH = 'bot_database.db'
 # Bot settings
 MAX_POSTS_TO_ANALYZE = 50
 MIN_POSTS_FOR_ANALYSIS = 5
-GEMINI_MODEL = 'gemini-2.0-flash-exp'
+GEMINI_MODEL = 'gemini-2.5-flash'
+
+# News search settings
+MAX_NEWS_ARTICLES = 10
+NEWS_SEARCH_TIMEOUT = 30
+ENABLE_NEWS_SEARCH = True
+
+# RSS News sources
+RSS_SOURCES = [
+    'https://feeds.bbci.co.uk/news/rss.xml',
+    'https://rss.cnn.com/rss/edition.rss',
+    'https://www.reuters.com/rssFeed/worldNews',
+    'https://techcrunch.com/feed/',
+    'https://habr.com/ru/rss/hub/artificial_intelligence/',
+    'https://lenta.ru/rss'
+]
 
 # Messages
 WELCOME_MESSAGE = """
@@ -56,5 +71,6 @@ CHANNELS_MENU_KEYBOARD = [
 
 GENERATE_MENU_KEYBOARD = [
     ["🎯 По теме", "🎲 Случайный пост"],
-    ["📝 Свободная тема", "🏠 Главное меню"]
+    ["📝 Свободная тема", "📰 С новостями"],
+    ["📊 Сводка новостей", "🏠 Главное меню"]
 ]

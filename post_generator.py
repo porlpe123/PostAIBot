@@ -10,38 +10,40 @@ class PostGenerator:
         self.db = Database()
         self.gemini = GeminiClient()
     
-    def generate_post_by_topic(self, channel_id: int, topic: str) -> Dict:
+    async def generate_post_by_topic(self, channel_id: int, topic: str, include_news: bool = False) -> Dict:
         """Генерация поста по заданной теме"""
         try:
             # Получаем анализ стиля канала
             style_info = self.db.get_style_analysis(channel_id)
-            
+
             if not style_info or not style_info['style_analysis']:
                 return {
                     'success': False,
                     'error': 'Анализ стиля канала не найден. Сначала проанализируйте канал.'
                 }
-            
+
             # Генерируем пост
-            generated_post = self.gemini.generate_post(
+            generated_post = await self.gemini.generate_post(
                 style_analysis=style_info['style_analysis'],
                 topic=topic,
-                post_type="topic"
+                post_type="topic",
+                include_news=include_news
             )
-            
+
             if not generated_post:
                 return {
                     'success': False,
                     'error': 'Ошибка при генерации поста'
                 }
-            
+
             return {
                 'success': True,
                 'post': generated_post,
                 'topic': topic,
-                'channel_id': channel_id
+                'channel_id': channel_id,
+                'includes_news': include_news
             }
-            
+
         except Exception as e:
             logger.error(f"Error generating post by topic: {e}")
             return {
@@ -49,35 +51,35 @@ class PostGenerator:
                 'error': str(e)
             }
     
-    def generate_random_post(self, channel_id: int) -> Dict:
+    async def generate_random_post(self, channel_id: int) -> Dict:
         """Генерация случайного поста"""
         try:
             style_info = self.db.get_style_analysis(channel_id)
-            
+
             if not style_info or not style_info['style_analysis']:
                 return {
                     'success': False,
                     'error': 'Анализ стиля канала не найден'
                 }
-            
-            generated_post = self.gemini.generate_post(
+
+            generated_post = await self.gemini.generate_post(
                 style_analysis=style_info['style_analysis'],
                 post_type="random"
             )
-            
+
             if not generated_post:
                 return {
                     'success': False,
                     'error': 'Ошибка при генерации случайного поста'
                 }
-            
+
             return {
                 'success': True,
                 'post': generated_post,
                 'topic': 'Случайная тема',
                 'channel_id': channel_id
             }
-            
+
         except Exception as e:
             logger.error(f"Error generating random post: {e}")
             return {
@@ -227,6 +229,108 @@ class PostGenerator:
             
         except Exception as e:
             logger.error(f"Error getting channel style summary: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+    async def generate_news_based_post(self, channel_id: int, topic: str) -> Dict:
+        """Генерация поста на основе актуальных новостей"""
+        try:
+            style_info = self.db.get_style_analysis(channel_id)
+
+            if not style_info or not style_info['style_analysis']:
+                return {
+                    'success': False,
+                    'error': 'Анализ стиля канала не найден'
+                }
+
+            generated_post = await self.gemini.generate_news_based_post(
+                style_analysis=style_info['style_analysis'],
+                topic=topic
+            )
+
+            if not generated_post:
+                return {
+                    'success': False,
+                    'error': 'Ошибка при генерации поста на основе новостей'
+                }
+
+            return {
+                'success': True,
+                'post': generated_post,
+                'topic': topic,
+                'channel_id': channel_id,
+                'type': 'news_based'
+            }
+
+        except Exception as e:
+            logger.error(f"Error generating news-based post: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+    async def get_news_summary(self, topic: str, max_articles: int = 5) -> Dict:
+        """Получение сводки новостей по теме"""
+        try:
+            news_summary = await self.gemini.summarize_news(topic, max_articles)
+
+            if not news_summary:
+                return {
+                    'success': False,
+                    'error': 'Не удалось создать сводку новостей'
+                }
+
+            return {
+                'success': True,
+                'summary': news_summary,
+                'topic': topic,
+                'type': 'news_summary'
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting news summary: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+    async def generate_multiple_variants_with_news(self, channel_id: int, topic: str, count: int = 3) -> Dict:
+        """Генерация нескольких вариантов поста с использованием новостей"""
+        try:
+            style_info = self.db.get_style_analysis(channel_id)
+
+            if not style_info or not style_info['style_analysis']:
+                return {
+                    'success': False,
+                    'error': 'Анализ стиля канала не найден'
+                }
+
+            variants = await self.gemini.generate_multiple_variants(
+                style_analysis=style_info['style_analysis'],
+                topic=topic,
+                count=count,
+                include_news=True
+            )
+
+            if not variants:
+                return {
+                    'success': False,
+                    'error': 'Ошибка при генерации вариантов постов с новостями'
+                }
+
+            return {
+                'success': True,
+                'variants': variants,
+                'topic': topic,
+                'channel_id': channel_id,
+                'count': len(variants),
+                'includes_news': True
+            }
+
+        except Exception as e:
+            logger.error(f"Error generating multiple variants with news: {e}")
             return {
                 'success': False,
                 'error': str(e)
