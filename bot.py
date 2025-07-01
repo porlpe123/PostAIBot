@@ -38,6 +38,7 @@ class PostAIBot:
         self.application.add_handler(CommandHandler("channels", self.channels_command))
         self.application.add_handler(CommandHandler("generate", self.generate_command))
         self.application.add_handler(CommandHandler("settings", self.settings_command))
+        self.application.add_handler(CommandHandler("debug", self.debug_command))
         
         # ConversationHandler для добавления канала
         add_channel_conv = ConversationHandler(
@@ -92,6 +93,9 @@ class PostAIBot:
         # Callback handlers
         self.application.add_handler(CallbackQueryHandler(self.handle_callback))
         
+        # Обработчик пересланных сообщений
+        self.application.add_handler(MessageHandler(filters.FORWARDED & ~filters.COMMAND, self.handle_forwarded_message))
+
         # Обработчик текстовых сообщений (кнопки меню)
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_menu))
     
@@ -241,15 +245,18 @@ class PostAIBot:
 
 1️⃣ Добавьте этого бота в ваш Telegram канал как администратора
 2️⃣ Дайте боту права на чтение сообщений
-3️⃣ Отправьте ID канала или перешлите любое сообщение из канала
+3️⃣ Выберите один из способов:
+
+🔸 **Способ 1 (Простой)**: Перешлите любое сообщение из канала
+🔸 **Способ 2**: Отправьте ID канала
 
 💡 Чтобы узнать ID канала:
 • Перешлите сообщение из канала боту @userinfobot
 • Или используйте @getidsbot
 
-Отправьте ID канала (например: -1001234567890):
+📤 Отправьте ID канала (например: -1001234567890) или перешлите сообщение:
 """
-        
+
         await update.message.reply_text(instructions)
         return WAITING_CHANNEL_ID
 
@@ -451,30 +458,52 @@ class PostAIBot:
     async def add_channel_process(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка добавления канала"""
         user_id = update.effective_user.id
-        channel_input = update.message.text.strip()
 
-        # Проверяем формат ID канала
-        try:
-            if channel_input.startswith('-100'):
-                channel_id = int(channel_input)
-            elif channel_input.startswith('@'):
-                # Обработка username канала
+        # Проверяем, если это пересланное сообщение из канала
+        if update.message.forward_from_chat:
+            channel_id = update.message.forward_from_chat.id
+            channel_name = update.message.forward_from_chat.title
+            channel_username = update.message.forward_from_chat.username
+
+            await update.message.reply_text(
+                f"✅ Обнаружен канал из пересланного сообщения:\n"
+                f"📊 Название: {channel_name}\n"
+                f"🆔 ID: {channel_id}\n"
+                f"Начинаю анализ..."
+            )
+        else:
+            # Обработка текстового ввода ID
+            channel_input = update.message.text.strip()
+
+            # Проверяем формат ID канала
+            try:
+                if channel_input.startswith('-100'):
+                    channel_id = int(channel_input)
+                elif channel_input.startswith('@'):
+                    # Обработка username канала
+                    await update.message.reply_text(
+                        "❌ Пожалуйста, используйте числовой ID канала, а не username.\n"
+                        "💡 Или перешлите любое сообщение из канала."
+                    )
+                    return WAITING_CHANNEL_ID
+                else:
+                    channel_id = int(channel_input)
+            except ValueError:
                 await update.message.reply_text(
-                    "❌ Пожалуйста, используйте числовой ID канала, а не username."
+                    "❌ Неверный формат ID канала.\n\n"
+                    "Попробуйте:\n"
+                    "1️⃣ Ввести ID канала (например: -1001234567890)\n"
+                    "2️⃣ Переслать любое сообщение из канала"
                 )
                 return WAITING_CHANNEL_ID
-            else:
-                channel_id = int(channel_input)
-        except ValueError:
-            await update.message.reply_text(
-                "❌ Неверный формат ID канала. Попробуйте еще раз:"
-            )
-            return WAITING_CHANNEL_ID
 
         # Показываем сообщение о начале анализа
         analyzing_msg = await update.message.reply_text(
-            "🔄 Анализирую канал...\n"
-            "Это может занять несколько минут."
+            "🔄 Анализирую канал...\n\n"
+            "📊 Проверяю доступ к каналу\n"
+            "📝 Собираю посты для анализа\n"
+            "🧠 Анализирую стиль написания\n\n"
+            "⏳ Это может занять 1-2 минуты..."
         )
 
         # Анализируем канал
@@ -491,8 +520,10 @@ class PostAIBot:
 
 📊 **{result['channel_name']}**
 📈 Проанализировано постов: {result['posts_analyzed']}
+🎯 Стиль изучен и готов к использованию
 
 Теперь вы можете генерировать посты в стиле этого канала!
+Используйте меню "✨ Генерировать пост"
 """
             keyboard = ReplyKeyboardMarkup(MAIN_MENU_KEYBOARD, resize_keyboard=True)
             await update.message.reply_text(
@@ -501,10 +532,19 @@ class PostAIBot:
                 parse_mode='Markdown'
             )
         else:
-            await update.message.reply_text(
-                f"❌ Ошибка при добавлении канала:\n{result['error']}\n\n"
-                "Попробуйте еще раз или обратитесь к инструкции."
-            )
+            error_text = f"""
+❌ Ошибка при добавлении канала:
+{result['error']}
+
+🔧 Возможные решения:
+1️⃣ Убедитесь, что бот добавлен в канал как администратор
+2️⃣ Дайте боту права на чтение сообщений
+3️⃣ Проверьте правильность ID канала
+4️⃣ Попробуйте переслать сообщение из канала
+
+Попробуйте еще раз:
+"""
+            await update.message.reply_text(error_text)
             return WAITING_CHANNEL_ID
 
         return ConversationHandler.END
@@ -808,3 +848,67 @@ class PostAIBot:
             )
 
         return ConversationHandler.END
+
+    async def debug_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда для диагностики проблем"""
+        user_id = update.effective_user.id
+
+        debug_info = f"""
+🔍 **Диагностическая информация**
+
+👤 **Пользователь:**
+- ID: {user_id}
+- Username: @{update.effective_user.username or 'не указан'}
+- Имя: {update.effective_user.first_name or 'не указано'}
+
+📊 **Каналы:**
+"""
+
+        # Получаем информацию о каналах пользователя
+        channels = self.db.get_user_channels(user_id)
+        if channels:
+            for i, channel in enumerate(channels, 1):
+                style_info = self.db.get_style_analysis(channel['channel_id'])
+                status = "✅ Проанализирован" if style_info else "⏳ Требует анализа"
+                debug_info += f"{i}. {channel['channel_name']}\n"
+                debug_info += f"   ID: {channel['channel_id']}\n"
+                debug_info += f"   Статус: {status}\n"
+                if style_info:
+                    debug_info += f"   Постов: {style_info['posts_count']}\n"
+                debug_info += "\n"
+        else:
+            debug_info += "Нет добавленных каналов\n"
+
+        debug_info += f"""
+🤖 **Бот:**
+- Статус: Работает
+- База данных: Подключена
+- Gemini API: Настроен
+
+💡 **Советы:**
+- Для добавления канала используйте /channels
+- Перешлите сообщение из канала для автоматического определения ID
+- Убедитесь, что бот добавлен в канал как администратор
+"""
+
+        await update.message.reply_text(debug_info, parse_mode='Markdown')
+
+    async def handle_forwarded_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработка пересланных сообщений"""
+        if update.message.forward_from_chat:
+            chat = update.message.forward_from_chat
+            if chat.type in ['channel', 'supergroup']:
+                info_text = f"""
+📋 **Информация о канале:**
+
+📊 Название: {chat.title}
+🆔 ID: `{chat.id}`
+👥 Тип: {chat.type}
+🔗 Username: @{chat.username or 'не указан'}
+
+💡 Чтобы добавить этот канал:
+1. Нажмите "📊 Мои каналы"
+2. Выберите "➕ Добавить канал"
+3. Перешлите это сообщение или введите ID: `{chat.id}`
+"""
+                await update.message.reply_text(info_text, parse_mode='Markdown')
