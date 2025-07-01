@@ -39,14 +39,22 @@ class PostAIBot:
         self.application.add_handler(CommandHandler("generate", self.generate_command))
         self.application.add_handler(CommandHandler("settings", self.settings_command))
         self.application.add_handler(CommandHandler("debug", self.debug_command))
+        self.application.add_handler(CommandHandler("testid", self.test_id_command))
         
         # ConversationHandler для добавления канала
         add_channel_conv = ConversationHandler(
-            entry_points=[CallbackQueryHandler(self.add_channel_start, pattern="^add_channel$")],
+            entry_points=[
+                CallbackQueryHandler(self.add_channel_start, pattern="^add_channel$"),
+                MessageHandler(filters.Regex("^➕ Добавить канал$"), self.add_channel_start_from_menu)
+            ],
             states={
-                WAITING_CHANNEL_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.add_channel_process)]
+                WAITING_CHANNEL_ID: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.add_channel_process),
+                    MessageHandler(filters.FORWARDED, self.add_channel_process)
+                ]
             },
-            fallbacks=[CommandHandler("cancel", self.cancel_operation)]
+            fallbacks=[CommandHandler("cancel", self.cancel_operation)],
+            per_message=False
         )
         self.application.add_handler(add_channel_conv)
         
@@ -194,7 +202,8 @@ class PostAIBot:
             await self.help_command(update, context)
         
         elif text == "➕ Добавить канал":
-            await self.show_add_channel_instructions(update, context)
+            # Этот случай обрабатывается ConversationHandler
+            pass
         
         elif text == "📋 Список каналов":
             await self.show_channels_list(update, context)
@@ -211,6 +220,16 @@ class PostAIBot:
         
         elif text in ["🎯 По теме", "🎲 Случайный пост", "📝 Свободная тема", "📰 С новостями", "📊 Сводка новостей"]:
             await self.handle_generation_type(update, context, text)
+
+        # Проверяем, если это ID канала (fallback обработка)
+        elif text and (text.startswith('-100') or text.lstrip('-').isdigit()):
+            await update.message.reply_text(
+                f"🆔 Получен ID канала: {text}\n\n"
+                "Для добавления канала:\n"
+                "1️⃣ Нажмите '📊 Мои каналы'\n"
+                "2️⃣ Выберите '➕ Добавить канал'\n"
+                "3️⃣ Отправьте этот ID: {text}"
+            )
     
     async def show_channels_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Показать меню управления каналами"""
@@ -455,9 +474,33 @@ class PostAIBot:
         await query.edit_message_text(instructions)
         return WAITING_CHANNEL_ID
 
+    async def add_channel_start_from_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Начало процесса добавления канала из меню"""
+        instructions = """
+📝 Добавление канала:
+
+1️⃣ Добавьте бота в канал как администратора
+2️⃣ Дайте права на чтение сообщений
+3️⃣ Выберите один из способов:
+
+🔸 **Способ 1 (Простой)**: Перешлите любое сообщение из канала
+🔸 **Способ 2**: Отправьте ID канала
+
+💡 Чтобы узнать ID канала:
+• Перешлите сообщение из канала боту @userinfobot
+• Или используйте @getidsbot
+
+📤 Отправьте ID канала (например: -1001234567890) или перешлите сообщение:
+"""
+
+        await update.message.reply_text(instructions)
+        return WAITING_CHANNEL_ID
+
     async def add_channel_process(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка добавления канала"""
         user_id = update.effective_user.id
+
+        logger.info(f"Processing channel addition from user {user_id}")
 
         # Проверяем, если это пересланное сообщение из канала
         if update.message.forward_from_chat:
@@ -474,13 +517,16 @@ class PostAIBot:
         else:
             # Обработка текстового ввода ID
             channel_input = update.message.text.strip()
+            logger.info(f"Received channel input: {channel_input}")
 
             # Проверяем формат ID канала
             try:
                 if channel_input.startswith('-100'):
                     channel_id = int(channel_input)
+                    logger.info(f"Parsed channel ID: {channel_id}")
                 elif channel_input.startswith('@'):
                     # Обработка username канала
+                    logger.info("Received username instead of ID")
                     await update.message.reply_text(
                         "❌ Пожалуйста, используйте числовой ID канала, а не username.\n"
                         "💡 Или перешлите любое сообщение из канала."
@@ -488,7 +534,9 @@ class PostAIBot:
                     return WAITING_CHANNEL_ID
                 else:
                     channel_id = int(channel_input)
-            except ValueError:
+                    logger.info(f"Parsed channel ID (without -100): {channel_id}")
+            except ValueError as e:
+                logger.error(f"ValueError parsing channel ID: {e}")
                 await update.message.reply_text(
                     "❌ Неверный формат ID канала.\n\n"
                     "Попробуйте:\n"
@@ -892,6 +940,15 @@ class PostAIBot:
 """
 
         await update.message.reply_text(debug_info, parse_mode='Markdown')
+
+    async def test_id_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Тестовая команда для проверки обработки ID"""
+        await update.message.reply_text(
+            "🧪 Тест обработки ID канала\n\n"
+            "Отправьте ID канала следующим сообщением.\n"
+            "Например: -1001234567890\n\n"
+            "Бот покажет, как он обрабатывает ваш ввод."
+        )
 
     async def handle_forwarded_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка пересланных сообщений"""
