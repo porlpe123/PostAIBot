@@ -690,8 +690,17 @@ class PostAIBot:
 
         logger.info("Bot is running...")
 
-        # Ожидаем завершения
-        await self.application.updater.idle()
+        # Ожидаем завершения - исправлено для совместимости
+        try:
+            await self.application.updater.idle()
+        except AttributeError:
+            # Для новых версий python-telegram-bot
+            import asyncio
+            try:
+                while True:
+                    await asyncio.sleep(1)
+            except KeyboardInterrupt:
+                logger.info("Received keyboard interrupt")
 
     async def stop_bot(self):
         """Остановка бота"""

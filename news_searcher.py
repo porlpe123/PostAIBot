@@ -6,7 +6,7 @@ import requests
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from bs4 import BeautifulSoup
-from newspaper import Article
+# from newspaper import Article  # Временно отключено из-за проблем с lxml.html.clean
 from config import RSS_SOURCES, MAX_NEWS_ARTICLES, NEWS_SEARCH_TIMEOUT, ENABLE_NEWS_SEARCH
 
 logger = logging.getLogger(__name__)
@@ -240,14 +240,19 @@ class NewsSearcher:
         return unique_articles
     
     async def get_article_content(self, url: str) -> Optional[str]:
-        """Получение полного содержимого статьи"""
+        """Получение полного содержимого статьи (временно отключено)"""
         try:
-            article = Article(url)
-            article.download()
-            article.parse()
-            
-            return article.text
-            
+            # Временно отключено из-за проблем с newspaper3k и lxml.html.clean
+            # В будущих версиях будет заменено на альтернативное решение
+            logger.warning("Article content extraction temporarily disabled due to lxml.html.clean compatibility issues")
+            return None
+
+            # Оригинальный код (закомментирован):
+            # article = Article(url)
+            # article.download()
+            # article.parse()
+            # return article.text
+
         except Exception as e:
             logger.error(f"Error getting article content from {url}: {e}")
             return None

@@ -39,10 +39,11 @@ GEMINI_API_KEY=ваш_ключ_от_Google_AI_Studio
 ## 4. Запуск
 
 ```bash
-# Простой запуск
-python run.py
+# Рекомендуемый запуск (исправляет проблемы совместимости)
+python start_bot.py
 
-# Или напрямую
+# Альтернативные способы
+python run.py
 python main.py
 ```
 

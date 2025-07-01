@@ -6,3 +6,4 @@ beautifulsoup4==4.12.2
 requests==2.31.0
 feedparser==6.0.10
 newspaper3k==0.2.8
+lxml_html_clean
